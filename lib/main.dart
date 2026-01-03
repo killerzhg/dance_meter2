@@ -1,35 +1,102 @@
+import 'dart:async';
+import 'dart:ui';
+
+import 'package:dance_meter2/Pages/home_page.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_background_service/flutter_background_service.dart';
 
-import 'Pages/home_page.dart';
-
-void main() {
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await initializeService();
   runApp(const MyApp());
+}
+
+Future<void> initializeService() async {
+  final service = FlutterBackgroundService();
+  await service.configure(
+    androidConfiguration: AndroidConfiguration(
+      onStart: onStart,
+      isForegroundMode: true,
+      autoStart: false,
+    ),
+    iosConfiguration: IosConfiguration(
+      autoStart: false,
+      onForeground: onStart,
+      onBackground: onIosBackground,
+    ),
+  );
+}
+
+@pragma('vm:entry-point')
+Future<bool> onIosBackground(ServiceInstance service) async {
+  WidgetsFlutterBinding.ensureInitialized();
+  DartPluginRegistrant.ensureInitialized();
+  return true;
+}
+
+@pragma('vm:entry-point')
+void onStart(ServiceInstance service) {
+  DartPluginRegistrant.ensureInitialized();
+  WidgetsFlutterBinding.ensureInitialized();
+
+  Timer? timer;
+  int seconds = 0;
+  int minutes = 0;
+  int? selectedMinute;
+  int? selectedPrice;
+  double totalPrice = 0.0;
+
+  service.on('start').listen((event) {
+    final Map<String, dynamic>? args = event;
+    if (args != null) {
+      selectedMinute = args['selectedMinute'];
+      selectedPrice = args['selectedPrice'];
+    }
+
+    seconds = 0;
+    minutes = 0;
+    totalPrice = 0.0;
+
+    timer?.cancel();
+    timer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      seconds++;
+      if (seconds >= 60) {
+        seconds = 0;
+        minutes++;
+        if (selectedMinute != null &&
+            selectedPrice != null &&
+            selectedMinute! > 0) {
+          totalPrice += selectedPrice! / selectedMinute!;
+        }
+      }
+
+      service.invoke(
+        'update',
+        {
+          "minutes": minutes,
+          "seconds": seconds,
+          "totalPrice": totalPrice,
+        },
+      );
+    });
+  });
+
+  service.on('stop').listen((event) {
+    timer?.cancel();
+    seconds = 0;
+    minutes = 0;
+    totalPrice = 0;
+  });
 }
 
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
 
-  // This widget is the root of your application.
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'Flutter Demo',
       theme: ThemeData(
-        // This is the theme of your application.
-        //
-        // TRY THIS: Try running your application with "flutter run". You'll see
-        // the application has a purple toolbar. Then, without quitting the app,
-        // try changing the seedColor in the colorScheme below to Colors.green
-        // and then invoke "hot reload" (save your changes or press the "hot
-        // reload" button in a Flutter-supported IDE, or press "r" if you used
-        // the command line to start the app).
-        //
-        // Notice that the counter didn't reset back to zero; the application
-        // state is not lost during the reload. To reset the state, use hot
-        // restart instead.
-        //
-        // This works for code too, not just values: Most code changes can be
-        // tested with just a hot reload.
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
       ),
       home: const HomePage(),
